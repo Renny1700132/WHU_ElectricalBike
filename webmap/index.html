@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>武大信息学部电单车调度系统 - 空间智能引擎</title>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+    <div id="map"></div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+    <script src="map.js"></script>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // 1. 初始化地图，开启默认底图
+            MapEngine.init('map', { basemap: 'cartoDark' });
+
+            // 2. 订阅基础事件
+            MapEngine.on('ready', (data) => console.log('🚀 空间智能地图引擎已就绪:', data));
+            MapEngine.on('map:clicked', (payload) => console.log('📍 拾取坐标:', payload.latlng));
+            MapEngine.on('basemap:error', (err) => console.warn('⚠️ 底图警告:', err.message));
+
+            // 3. 联调专用：动态拉取后端校园基础数据 (成员 D 接入时可移除或改造)
+            const urlParams = new URLSearchParams(window.location.search);
+            const apiBaseUrl = urlParams.get('apiBase') || 'http://127.0.0.1:7860/api';
+
+            fetch(`${apiBaseUrl}/campus/base-data`)
+                .then(res => {
+                    if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+                    return res.json();
+                })
+                .then(data => {
+                    console.log('✅ 成功获取后端校园基础数据');
+                    try {
+                        MapEngine.setCampusBaseData(data);
+                    } catch (err) {
+                        console.error('❌ 校园基础数据渲染失败:', err);
+                        const errDiv = document.createElement('div');
+                        errDiv.className = 'fetch-error-toast';
+                        errDiv.innerHTML = `⚠️ 校园基础数据渲染失败：${err?.message || err}`;
+                        document.getElementById('map').appendChild(errDiv);
+                    }
+                })
+                .catch(err => {
+                    console.error('❌ 获取校园基础数据失败（网络/后端问题）:', err);
+                    // 动态插入错误提示，不破坏原 HTML 结构
+                    const errDiv = document.createElement('div');
+                    errDiv.className = 'fetch-error-toast';
+                    errDiv.innerHTML = `⚠️ 无法连接到后端 (${apiBaseUrl})，请检查 FastAPI 服务是否启动。`;
+                    document.getElementById('map').appendChild(errDiv);
+                });
+        });
+    </script>
+</body>
+</html>

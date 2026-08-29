@@ -1,0 +1,1449 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>武大信息学部电单车调度系统 - 仪表盘</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="style.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body { width: 100%; height: 100%; overflow: hidden; font-family: 'Segoe UI', Arial, sans-serif; background: #0b1220; color: #e0e0e0; }
+        .manual-site-marker {
+            background-color: #3498db !important;
+            border: 2px solid #fff;
+            border-radius: 50%;
+            box-shadow: 0 0 8px rgba(52, 152, 219, 0.8);
+        }
+        .student-sim-hud {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            z-index: 1200;
+            pointer-events: none;
+            background: rgba(11, 18, 32, 0.72);
+            border: 1px solid rgba(42, 58, 74, 0.9);
+            border-radius: 10px;
+            padding: 10px 12px;
+            min-width: 180px;
+            backdrop-filter: blur(8px);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+        }
+        .student-sim-hud .title {
+            font-size: 12px;
+            font-weight: 700;
+            color: #00E5FF;
+            margin-bottom: 6px;
+            letter-spacing: 0.5px;
+        }
+        .student-sim-hud .row {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+            font-size: 12px;
+            color: #cbd5e1;
+            line-height: 1.5;
+        }
+        .student-sim-hud .muted { color: #94a3b8; }
+        .student-route {
+            filter: drop-shadow(0 0 6px rgba(0, 229, 255, 0.35));
+            mix-blend-mode: screen;
+        }
+        .student-dot {
+            filter: drop-shadow(0 0 8px rgba(0, 250, 154, 0.55));
+        }
+        .dispatch-vehicle-marker {
+            width: 16px;
+            height: 16px;
+        }
+        .dispatch-vehicle-marker > div {
+            width: 14px;
+            height: 14px;
+            margin: 1px;
+            border-radius: 50%;
+            border: 2px solid rgba(226, 232, 240, 0.9);
+            box-shadow: 0 0 10px rgba(0, 229, 255, 0.35), 0 0 18px rgba(0, 250, 154, 0.25);
+        }
+        .sim-row { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; }
+        .sim-row:last-child { margin-bottom: 0; }
+        .sim-label { width: 86px; font-size: 12px; color: #94a3b8; }
+        .sim-input, .sim-select {
+            flex: 1;
+            padding: 8px 10px;
+            border-radius: 8px;
+            border: 1px solid #2a3a4a;
+            background: #0b1220;
+            color: #e0e0e0;
+            font-size: 13px;
+            outline: none;
+        }
+        .sim-hint { font-size: 11px; color: #6a7a8a; margin-top: 6px; }
+        .btn-tertiary { background: #182535; color: #e0e0e0; }
+        .btn-tertiary:hover { background: #223549; }
+
+        .dashboard-container { display: flex; width: 100%; height: 100vh; }
+
+        .control-panel {
+            width: 320px;
+            min-width: 320px;
+            background: linear-gradient(180deg, #0f1923 0%, #1a2634 100%);
+            border-right: 1px solid #2a3a4a;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            z-index: 1000;
+        }
+
+        .panel-header {
+            padding: 16px 20px;
+            background: linear-gradient(90deg, #00FA9A 0%, #00E5FF 100%);
+            color: #0b1220;
+            font-weight: 700;
+            font-size: 16px;
+            text-align: center;
+            letter-spacing: 1px;
+        }
+
+        .panel-section { padding: 16px 20px; border-bottom: 1px solid #2a3a4a; }
+        .panel-section:last-child { border-bottom: none; flex: 1; }
+
+        .section-title { font-size: 12px; color: #00E5FF; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 12px; font-weight: 600; }
+
+        .period-selector { display: flex; gap: 8px; }
+        .period-btn {
+            flex: 1;
+            padding: 10px 8px;
+            border: 2px solid #2a3a4a;
+            background: #0b1220;
+            color: #8a9aaa;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+        .period-btn:hover { border-color: #00E5FF; color: #00E5FF; }
+        .period-btn.active { background: linear-gradient(135deg, #00FA9A, #00E5FF); border-color: transparent; color: #0b1220; font-weight: 700; }
+
+        .layer-item { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; }
+        .layer-item span { font-size: 13px; color: #c0c8d0; }
+        .toggle-switch { position: relative; width: 42px; height: 22px; }
+        .toggle-switch input { opacity: 0; width: 0; height: 0; }
+        .toggle-slider {
+            position: absolute; cursor: pointer; inset: 0;
+            background: #2a3a4a; border-radius: 22px;
+            transition: 0.3s;
+        }
+        .toggle-slider:before {
+            content: ''; position: absolute; height: 16px; width: 16px;
+            left: 3px; bottom: 3px; background: #8a9aaa; border-radius: 50%;
+            transition: 0.3s;
+        }
+        input:checked + .toggle-slider { background: linear-gradient(90deg, #00FA9A, #00E5FF); }
+        input:checked + .toggle-slider:before { transform: translateX(20px); background: #fff; }
+
+        .action-btn {
+            width: 100%;
+            padding: 12px;
+            margin-bottom: 10px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        .btn-primary { background: linear-gradient(135deg, #00FA9A, #00E5FF); color: #0b1220; }
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 4px 15px rgba(0, 245, 154, 0.3); }
+        .btn-secondary { background: #2a3a4a; color: #e0e0e0; }
+        .btn-secondary:hover { background: #3a4a5a; }
+        .btn-danger { background: linear-gradient(135deg, #e74c3c, #c0392b); color: #fff; }
+        .btn-danger:hover { box-shadow: 0 4px 15px rgba(231, 76, 60, 0.3); }
+
+        .scheme-list { max-height: 200px; overflow-y: auto; }
+        .scheme-item {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 10px 12px; background: #0b1220; border-radius: 6px;
+            margin-bottom: 8px; border: 1px solid #2a3a4a;
+        }
+        .scheme-info { flex: 1; cursor: pointer; }
+        .scheme-name { font-size: 13px; color: #e0e0e0; font-weight: 500; }
+        .scheme-meta { font-size: 11px; color: #6a7a8a; margin-top: 2px; }
+        .scheme-actions { display: flex; gap: 6px; }
+        .scheme-btn {
+            width: 28px; height: 28px; border: none; border-radius: 4px;
+            cursor: pointer; font-size: 12px; display: flex; align-items: center; justify-content: center;
+        }
+        .scheme-btn.load { background: #2a3a4a; color: #00E5FF; }
+        .scheme-btn.delete { background: #2a3a4a; color: #e74c3c; }
+        .scheme-btn.compare { background: #2a3a4a; color: #f39c12; }
+
+        .map-wrapper { flex: 1; position: relative; }
+        #map { width: 100%; height: 100%; }
+
+        .charts-panel {
+            width: 300px;
+            min-width: 300px;
+            background: linear-gradient(180deg, #0f1923 0%, #1a2634 100%);
+            border-left: 1px solid #2a3a4a;
+            padding: 16px;
+            overflow-y: auto;
+        }
+        .chart-container { background: #0b1220; border-radius: 8px; padding: 12px; margin-bottom: 16px; }
+        .chart-title { font-size: 12px; color: #00E5FF; margin-bottom: 8px; font-weight: 600; }
+        #demandChart, #coverageChart { width: 100%; height: 180px; }
+        #metricsPanel .metric-item {
+            background: #0b1220; border-radius: 8px; padding: 12px; margin-bottom: 10px;
+            border-left: 3px solid #00FA9A;
+        }
+        .metric-label { font-size: 11px; color: #6a7a8a; text-transform: uppercase; }
+        .metric-value { font-size: 22px; color: #00FA9A; font-weight: 700; margin-top: 4px; }
+        .metric-unit { font-size: 12px; color: #6a7a8a; }
+
+        .modal-overlay {
+            display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+            z-index: 9999; align-items: center; justify-content: center;
+        }
+        .modal-overlay.active { display: flex; }
+        .modal-content {
+            background: linear-gradient(180deg, #1a2634 0%, #0f1923 100%);
+            border-radius: 12px; padding: 24px; min-width: 360px; max-width: 480px;
+            border: 1px solid #2a3a4a; box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+        }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .modal-title { font-size: 18px; color: #00FA9A; font-weight: 700; }
+        .modal-close { background: none; border: none; color: #6a7a8a; font-size: 24px; cursor: pointer; line-height: 1; }
+        .modal-close:hover { color: #e0e0e0; }
+        .modal-body { color: #c0c8d0; font-size: 14px; }
+        .modal-body .detail-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #2a3a4a; }
+        .modal-body .detail-row:last-child { border-bottom: none; }
+        .modal-body .detail-label { color: #6a7a8a; }
+        .modal-body .detail-value { color: #e0e0e0; font-weight: 500; }
+        .modal-footer { margin-top: 20px; display: flex; gap: 10px; justify-content: flex-end; }
+
+        .toast {
+            position: fixed; bottom: 20px; right: 20px; padding: 8px 16px;
+            border-radius: 8px; font-size: 13px; z-index: 10000; max-width: 300px;
+            animation: slideIn 0.3s ease; display: inline-block; white-space: nowrap;
+        }
+        .toast.success { background: linear-gradient(135deg, #00FA9A, #00E5FF); color: #0b1220; }
+        .toast.error { background: #e74c3c; color: #fff; }
+        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+        .compare-panel {
+            display: none; position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+            background: linear-gradient(180deg, #1a2634 0%, #0f1923 100%);
+            border-radius: 12px; padding: 16px 24px; border: 1px solid #2a3a4a;
+            z-index: 1000; box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+        }
+        .compare-panel.active { display: block; }
+        .compare-title { font-size: 14px; color: #00E5FF; margin-bottom: 12px; text-align: center; font-weight: 600; }
+        .compare-btns { display: flex; gap: 10px; }
+        .compare-scheme-btn {
+            padding: 8px 16px; border: 2px solid #2a3a4a; background: #0b1220;
+            color: #e0e0e0; border-radius: 6px; cursor: pointer; font-size: 13px;
+        }
+        .compare-scheme-btn.selected { border-color: #f39c12; color: #f39c12; }
+        .compare-scheme-btn:hover { border-color: #00E5FF; }
+    </style>
+</head>
+<body>
+    <div class="dashboard-container">
+        <div class="control-panel">
+            <div class="panel-header">🚲 武大电单车调度系统</div>
+
+            <div class="panel-section">
+                <div class="section-title">⏰ 时段选择</div>
+                <div class="period-selector">
+                    <button class="period-btn active" data-period="morning">早高峰</button>
+                    <button class="period-btn" data-period="noon">午高峰</button>
+                    <button class="period-btn" data-period="evening">晚高峰</button>
+                </div>
+            </div>
+
+            <div class="panel-section">
+                <div class="section-title">🗺️ 图层控制</div>
+                <div class="layer-item" title="显示/隐藏校园建筑">
+                    <span>建筑</span>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="layerBuildings" checked>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div class="layer-item" title="显示/隐藏道路网络">
+                    <span>路网</span>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="layerRoads" checked>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div class="layer-item" title="显示/隐藏兴趣点标注">
+                    <span>POI</span>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="layerPOI" checked>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div class="layer-item" title="显示/隐藏各时段需求热力图">
+                    <span>需求热力图</span>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="layerHeatmap">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div class="layer-item" title="显示/隐藏手动选址的覆盖服务范围">
+                    <span>手动覆盖区</span>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="layerManualCoverage">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div class="layer-item" title="显示/隐藏自动选址的覆盖服务范围">
+                    <span>自动覆盖区</span>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="layerAutoCoverage">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div class="layer-item">
+                    <span>调度路线</span>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="layerDispatch">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div class="layer-item">
+                    <span>学生轨迹</span>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="layerStudentSim">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="panel-section">
+                <div class="section-title">🎯 智能选址</div>
+                <button class="action-btn btn-primary" id="btnSitingOptimize">⚡ 智能选址优化</button>
+                <button class="action-btn btn-secondary" id="btnManualSiting">📍 手动选址模式</button>
+                <button class="action-btn btn-danger" id="btnClearSiting">🗑️ 清除选址</button>
+            </div>
+
+            <div class="panel-section">
+                <div class="section-title">🚚 调度优化</div>
+                <button class="action-btn btn-primary" id="btnDispatchOptimize">⚡ 优化调度路线</button>
+                <button class="action-btn btn-secondary" id="btnPlayDispatch">▶️ 播放动画</button>
+                <button class="action-btn btn-danger" id="btnClearDispatch">🗑️ 清除调度</button>
+            </div>
+
+            <div class="panel-section">
+                <div class="section-title">👥 人流模拟</div>
+                <div class="sim-row">
+                    <div class="sim-label">学生数量</div>
+                    <input class="sim-input" id="studentSimCount" type="number" min="1" max="500" step="1" value="30">
+                </div>
+                <div class="sim-row">
+                    <div class="sim-label">渲染上限</div>
+                    <input class="sim-input" id="studentSimRenderLimit" type="number" min="1" max="200" step="1" value="40">
+                </div>
+                <div class="sim-row">
+                    <div class="sim-label">速度(分/秒)</div>
+                    <input class="sim-input" id="studentSimSpeed" type="number" min="1" max="180" step="1" value="20">
+                </div>
+                <div class="sim-row" style="justify-content: space-between;">
+                    <label style="display:flex; align-items:center; gap:8px; font-size:12px; color:#cbd5e1;">
+                        <input type="checkbox" id="studentSimIncludeRoutes" checked>
+                        生成沿路网轨迹
+                    </label>
+                    <div id="studentSimStatus" style="font-size:11px; color:#6a7a8a;">未生成</div>
+                </div>
+                <button class="action-btn btn-primary" id="btnStudentSimGenerate">👥 生成轨迹</button>
+                <button class="action-btn btn-tertiary" id="btnStudentSimPlay">⏵ 播放</button>
+                <button class="action-btn btn-danger" id="btnStudentSimClear">🗑️ 清空轨迹</button>
+                <div class="sim-hint">提示：先点击“生成轨迹”，再开启“学生轨迹”图层开关并播放。</div>
+            </div>
+
+            <div class="panel-section">
+                <div class="section-title">💾 方案管理</div>
+                <button class="action-btn btn-primary" id="btnSaveScheme">💾 保存当前方案</button>
+                <button class="action-btn btn-secondary" id="btnExportScheme">📤 导出方案</button>
+                <button class="action-btn btn-secondary" id="btnScreenshot">📷 截图</button>
+                <div class="scheme-list" id="schemeList"></div>
+            </div>
+        </div>
+
+        <div class="map-wrapper">
+            <div id="map"></div>
+            <div class="student-sim-hud" id="studentSimHud" style="display:none;">
+                <div class="title">👥 人流模拟</div>
+                <div class="row"><span class="muted">模拟时间</span><span id="studentSimHudTime">--:--</span></div>
+                <div class="row"><span class="muted">渲染人数</span><span id="studentSimHudCount">--</span></div>
+                <div class="row"><span class="muted">播放速度</span><span id="studentSimHudSpeed">--</span></div>
+            </div>
+            <div class="compare-panel" id="comparePanel">
+                <div class="compare-title">📊 方案对比 (选择2个方案)</div>
+                <div class="compare-btns" id="compareBtns"></div>
+                <div style="margin-top:12px; text-align:center;">
+                    <button class="action-btn btn-primary" id="btnConfirmCompare" style="width:auto; padding:8px 24px;">开始对比</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="charts-panel">
+            <div class="section-title">📈 数据分析</div>
+            <div class="chart-container">
+                <div class="chart-title">需求分布</div>
+                <div id="demandChart"></div>
+            </div>
+            <div class="chart-container">
+                <div class="chart-title">覆盖指标</div>
+                <div id="coverageChart"></div>
+            </div>
+            <div id="metricsPanel">
+                <div class="metric-item">
+                    <div class="metric-label">服务覆盖率</div>
+                    <div class="metric-value"><span id="metricCoverage">--</span><span class="metric-unit">%</span></div>
+                </div>
+                <div class="metric-item">
+                    <div class="metric-label">服务半径</div>
+                    <div class="metric-value"><span id="metricRadius">--</span><span class="metric-unit">m</span></div>
+                </div>
+                <div class="metric-item">
+                    <div class="metric-label">均衡性</div>
+                    <div class="metric-value"><span id="metricBalance">--</span><span class="metric-unit">%</span></div>
+                </div>
+                <div class="metric-item">
+                    <div class="metric-label">总停车位数</div>
+                    <div class="metric-value" id="metricSites">--</div>
+                </div>
+                <div class="metric-item">
+                    <div class="metric-label">调度效率</div>
+                    <div class="metric-value"><span id="metricEfficiency">--</span><span class="metric-unit">m</span></div>
+                </div>
+                <div class="metric-item">
+                    <div class="metric-label">转运数量</div>
+                    <div class="metric-value"><span id="metricTransfers">--</span><span class="metric-unit">辆</span></div>
+                </div>
+                <div class="metric-item">
+                    <div class="metric-label">调度成本</div>
+                    <div class="metric-value"><span id="metricCost">--</span></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="supply-demand-panel" id="supplyDemandPanel">
+        <div class="panel-title">📊 供需状态</div>
+        <div class="supply-demand-list" id="supplyDemandList">
+            <div style="text-align:center; color:#6a7a8a; padding:10px; font-size:12px;">点击"查看供需"加载数据</div>
+        </div>
+        <button class="action-btn btn-secondary" id="btnLoadSupplyDemand" style="width:100%; margin-top:10px;">查看供需</button>
+    </div>
+
+    <div class="modal-overlay" id="siteDetailModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title">📍 停车点详情</div>
+                <button class="modal-close" id="modalClose">&times;</button>
+            </div>
+            <div class="modal-body" id="modalBody"></div>
+            <div class="modal-footer">
+                <button class="action-btn btn-secondary" id="modalCloseBtn" style="margin:0; width:auto;">关闭</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="saveSchemeModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title">💾 保存方案</div>
+                <button class="modal-close" id="saveModalClose">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div style="margin-bottom:16px;">
+                    <label style="display:block; margin-bottom:6px; color:#6a7a8a; font-size:12px;">方案名称</label>
+                    <input type="text" id="schemeNameInput" placeholder="请输入方案名称" style="width:100%; padding:10px; border-radius:6px; border:1px solid #2a3a4a; background:#0b1220; color:#e0e0e0; font-size:14px;">
+                </div>
+                <div>
+                    <label style="display:block; margin-bottom:6px; color:#6a7a8a; font-size:12px;">备注</label>
+                    <textarea id="schemeNoteInput" placeholder="可选备注" rows="3" style="width:100%; padding:10px; border-radius:6px; border:1px solid #2a3a4a; background:#0b1220; color:#e0e0e0; font-size:14px; resize:none;"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="action-btn btn-secondary" id="btnCancelSave" style="margin:0; width:auto;">取消</button>
+                <button class="action-btn btn-primary" id="btnConfirmSave" style="margin:0; width:auto;">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="map.js"></script>
+    <script>
+        const apiBaseUrl = 'http://127.0.0.1:7860/api';
+        let currentPeriod = 'morning';
+        let sitingResult = null;
+        let dispatchResult = null;
+        let compareSchemes = [];
+        let demandChart = null;
+        let coverageChart = null;
+        let currentHeatLayer = null;
+        let manualSitingMode = false;
+        let campusLayers = { buildings: null, roads: null, pois: null };
+        let heatmapOptions = {
+            radius: 28,
+            blur: 18,
+            maxOpacity: 0.75,
+            minOpacity: 0.12,
+            max: 1.0,
+            gradient: { 0.15: '#22d3ee', 0.45: '#67e8f9', 0.70: '#fcd34d', 0.88: '#fb7185', 1.0: '#ef4444' }
+        };
+        let studentSimResp = null;
+        let studentSimIndex = null;
+        let studentSimLayers = null;
+        let studentSimRaf = null;
+        let studentSimPlaying = false;
+        let studentSimSimMinute = 0;
+        let studentSimSimStart = 8 * 60;
+        let studentSimSimEnd = 20 * 60;
+        let studentSimLastTs = 0;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            MapEngine.init('map', { basemap: 'cartoDark' });
+            initStudentSim();
+            initCharts();
+            loadSchemes();
+            loadBaseData();
+            bindEvents();
+            refreshAll();
+            MapEngine.on('marker:clicked', ({ type, id, data }) => showSiteDetail(type, data || { site_id: id }));
+            MapEngine.on('manualSite:clicked', (siteData) => showSiteDetail('manual', siteData));
+        });
+
+        function initCharts() {
+            demandChart = echarts.init(document.getElementById('demandChart'));
+            coverageChart = echarts.init(document.getElementById('coverageChart'));
+            demandChart.setOption({
+                tooltip: { trigger: 'axis' },
+                grid: { left: '10%', right: '10%', bottom: '15%', top: '10%' },
+                xAxis: { type: 'category', data: ['6:00', '9:00', '12:00', '15:00', '18:00', '21:00'], axisLine: { lineStyle: { color: '#2a3a4a' } }, axisLabel: { color: '#6a7a8a', fontSize: 10 } },
+                yAxis: { type: 'value', axisLine: { lineStyle: { color: '#2a3a4a' } }, axisLabel: { color: '#6a7a8a', fontSize: 10 }, splitLine: { lineStyle: { color: '#1a2634' } } },
+                series: [{ data: [120, 340, 580, 420, 680, 290], type: 'line', smooth: true, areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: 'rgba(0,245,154,0.4)' }, { offset: 1, color: 'rgba(0,229,255,0.1)' }] } }, lineStyle: { color: '#00FA9A' }, itemStyle: { color: '#00FA9A' } }]
+            });
+            coverageChart.setOption({
+                tooltip: { trigger: 'axis' },
+                grid: { left: '10%', right: '10%', bottom: '15%', top: '10%' },
+                xAxis: { type: 'category', data: ['手动', '智能'], axisLine: { lineStyle: { color: '#2a3a4a' } }, axisLabel: { color: '#6a7a8a', fontSize: 10 } },
+                yAxis: { type: 'value', max: 100, axisLine: { lineStyle: { color: '#2a3a4a' } }, axisLabel: { color: '#6a7a8a', fontSize: 10, formatter: '{value}%' }, splitLine: { lineStyle: { color: '#1a2634' } } },
+                series: [{ data: [0, 0], type: 'bar', barWidth: '40%', itemStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: '#00E5FF' }, { offset: 1, color: '#00FA9A' }] } }, label: { show: true, position: 'top', formatter: '{c}%', color: '#e0e0e0', fontSize: 10 } }]
+            });
+            window.addEventListener('resize', () => { demandChart.resize(); coverageChart.resize(); });
+            loadAnalysisData();
+        }
+
+        async function loadAnalysisData() {
+            try {
+                const resp = await fetch(`${apiBaseUrl}/analysis/metrics`);
+                const data = await resp.json();
+                if (data?.summary) {
+                    document.getElementById('metricRadius').textContent = data.summary.service_radius || '--';
+                    document.getElementById('metricBalance').textContent = data.summary.balance_score ? (data.summary.balance_score * 100).toFixed(1) : '--';
+                }
+                if (data?.charts) {
+                    if (data.charts.coverage_bar) {
+                        const labels = data.charts.coverage_bar.map(b => b.label === 'manual' ? '手动' : '智能');
+                        const values = data.charts.coverage_bar.map(b => (b.value * 100).toFixed(1));
+                        coverageChart.setOption({
+                            xAxis: { type: 'category', data: labels, axisLine: { lineStyle: { color: '#2a3a4a' } }, axisLabel: { color: '#6a7a8a', fontSize: 10 } },
+                            series: [{ data: values, type: 'bar', barWidth: '40%', itemStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: '#00E5FF' }, { offset: 1, color: '#00FA9A' }] } }, label: { show: true, position: 'top', formatter: '{c}%', color: '#e0e0e0', fontSize: 10 } }]
+                        });
+                    }
+                }
+            } catch (err) { console.error('Failed to load analysis data:', err); }
+        }
+
+        function loadBaseData() {
+            fetch(`${apiBaseUrl}/campus/base-data`)
+                .then(res => res.json())
+                .then(data => {
+                    if (!data) return;
+                    if (data.buildings) {
+                        campusLayers.buildings = L.geoJSON(data.buildings, {
+                            style: { color: '#00E5FF', weight: 1.5, fillColor: '#0A243F', fillOpacity: 0.6 }
+                        }).addTo(MapEngine.map);
+                    }
+                    if (data.road_network) {
+                        campusLayers.roads = L.geoJSON(data.road_network, {
+                            style: { color: '#00FA9A', weight: 2, dashArray: '3, 6', opacity: 0.4 }
+                        }).addTo(MapEngine.map);
+                    }
+                    if (data.pois) {
+                        campusLayers.pois = L.geoJSON(data.pois, {
+                            pointToLayer: (feature, latlng) => L.circleMarker(latlng, {
+                                radius: 4, fillColor: '#F1C40F', color: '#FFF', weight: 1, fillOpacity: 0.8
+                            }),
+                            onEachFeature: (feature, layer) => {
+                                const name = feature.properties?.name || '未知建筑';
+                                layer.bindPopup(`<b>${name}</b>`);
+                            }
+                        }).addTo(MapEngine.map);
+                    }
+                })
+                .catch(err => console.error('Failed to load base data:', err));
+        }
+
+        function toggleManualSitingMode() {
+            manualSitingMode = !manualSitingMode;
+            const btn = document.getElementById('btnManualSiting');
+            if (manualSitingMode) {
+                btn.classList.remove('btn-secondary');
+                btn.classList.add('btn-primary');
+                btn.textContent = '✓ 手动选址模式';
+                MapEngine.map.getContainer().style.cursor = 'crosshair';
+                MapEngine.map.on('click', addManualSiteOnClick);
+                showToast('点击地图添加停车点，右键或再次点击取消', 'success');
+            } else {
+                btn.classList.remove('btn-primary');
+                btn.classList.add('btn-secondary');
+                btn.textContent = '📍 手动选址';
+                MapEngine.map.getContainer().style.cursor = '';
+                MapEngine.map.off('click', addManualSiteOnClick);
+            }
+        }
+
+        function addManualSiteOnClick(e) {
+            if (e.originalEvent.button === 2) return;
+            const site_id = MapEngine.addManualSite({
+                latitude: e.latlng.lat,
+                longitude: e.latlng.lng,
+                capacity: 30,
+                name: `手动点-${Date.now().toString().slice(-4)}`
+            });
+            if (site_id) {
+                updateManualSitesList();
+                runSitingEvaluate();
+                showToast('已添加手动停车点', 'success');
+            }
+        }
+
+        function updateManualSitesList() {
+            const sites = MapEngine.getManualSites();
+            let listHtml = '';
+            if (sites.length === 0) {
+                listHtml = '<div style="text-align:center; color:#6a7a8a; padding:10px; font-size:12px;">暂无手动选址点</div>';
+            } else {
+                listHtml = sites.map(s => `
+                    <div class="scheme-item" style="margin-bottom:6px;">
+                        <div class="scheme-info" onclick="showManualSiteDetail('${s.site_id}')">
+                            <div class="scheme-name">${s.name}</div>
+                            <div class="scheme-meta">容量: ${s.capacity}</div>
+                        </div>
+                        <button class="scheme-btn delete" onclick="deleteManualSite('${s.site_id}')" title="删除">✕</button>
+                    </div>
+                `).join('');
+            }
+            const listContainer = document.getElementById('manualSitesList') || createManualSitesList();
+            listContainer.innerHTML = listHtml;
+        }
+
+        function createManualSitesList() {
+            const section = document.createElement('div');
+            section.className = 'panel-section';
+            section.innerHTML = `
+                <div class="section-title">📍 手动选址列表</div>
+                <div id="manualSitesList" style="max-height:150px; overflow-y:auto;"></div>
+            `;
+            const panel = document.querySelector('.control-panel');
+            const sitingSection = document.querySelector('.panel-section:nth-of-type(4)');
+            panel.insertBefore(section, sitingSection);
+            return document.getElementById('manualSitesList');
+        }
+
+        function deleteManualSite(siteId) {
+            MapEngine.removeManualSite(siteId);
+            MapEngine.clearManualCoverage();
+            updateManualSitesList();
+            const remainingSites = MapEngine.getManualSites();
+            if (remainingSites.length > 0) {
+                runSitingEvaluate();
+            } else {
+                refreshAll();
+            }
+            showToast('已删除手动停车点', 'success');
+        }
+
+        function showManualSiteDetail(siteId) {
+            const sites = MapEngine.getManualSites();
+            const site = sites.find(s => s.site_id === siteId);
+            if (site) showSiteDetail('manual', site);
+        }
+
+        function loadHeatmapByPeriod(period) {
+            if (!document.getElementById('layerHeatmap').checked) return;
+            fetch(`${apiBaseUrl}/demand/heatmap?period=${period}`)
+                .then(res => res.json())
+                .then(data => {
+                    if (data.points && data.points.length > 0) {
+                        if (currentHeatLayer) {
+                            MapEngine.map.removeLayer(currentHeatLayer);
+                        }
+                        // 后端权重是 predicted_demand（可能是 100~700 这种数值），leaflet-heat 默认 max=1 会导致“全图红”
+                        // 这里把权重归一化到 0~1，让高需求才会红、低需求保持浅色形成对比
+                        const rawPoints = data.points;
+                        const weights = rawPoints
+                            .map(p => (Array.isArray(p) && typeof p[2] === 'number') ? p[2] : 1)
+                            .filter(w => Number.isFinite(w));
+                        const wMin = weights.length ? Math.min(...weights) : 0;
+                        const wMax = weights.length ? Math.max(...weights) : 1;
+                        const denom = (wMax - wMin) || 1;
+                        const gamma = 0.65;
+                        const normalized = rawPoints.map(p => {
+                            const lat = p[0], lng = p[1];
+                            const w = (typeof p[2] === 'number' && Number.isFinite(p[2])) ? p[2] : 1;
+                            const t = Math.max(0, Math.min(1, (w - wMin) / denom));
+                            const intensity = 0.10 + 0.90 * Math.pow(t, gamma);
+                            return [lat, lng, intensity];
+                        });
+                        currentHeatLayer = L.heatLayer(normalized, heatmapOptions).addTo(MapEngine.map);
+                    }
+                })
+                .catch(err => console.error('Failed to load heatmap:', err));
+        }
+
+        function removeHeatmap() {
+            if (currentHeatLayer) {
+                try {
+                    MapEngine.map.removeLayer(currentHeatLayer);
+                } catch (e) {}
+                currentHeatLayer = null;
+            }
+        }
+
+        function bindEvents() {
+            document.querySelectorAll('.period-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    currentPeriod = btn.dataset.period;
+                    showToast(`已切换至${btn.textContent}`, 'success');
+                    loadHeatmapByPeriod(currentPeriod);
+                });
+            });
+
+            document.getElementById('layerBuildings').addEventListener('change', e => {
+                if (campusLayers.buildings) {
+                    if (e.target.checked) MapEngine.map.addLayer(campusLayers.buildings);
+                    else MapEngine.map.removeLayer(campusLayers.buildings);
+                }
+            });
+            document.getElementById('layerRoads').addEventListener('change', e => {
+                if (campusLayers.roads) {
+                    if (e.target.checked) MapEngine.map.addLayer(campusLayers.roads);
+                    else MapEngine.map.removeLayer(campusLayers.roads);
+                }
+            });
+            document.getElementById('layerPOI').addEventListener('change', e => {
+                if (campusLayers.pois) {
+                    if (e.target.checked) MapEngine.map.addLayer(campusLayers.pois);
+                    else MapEngine.map.removeLayer(campusLayers.pois);
+                }
+            });
+            document.getElementById('layerHeatmap').addEventListener('change', e => {
+                if (e.target.checked) {
+                    loadHeatmapByPeriod(currentPeriod);
+                } else {
+                    removeHeatmap();
+                }
+            });
+            document.getElementById('layerAutoCoverage').addEventListener('change', e => {
+                if (e.target.checked) {
+                    MapEngine.layers.sitingSites.addTo(MapEngine.map);
+                    MapEngine.layers.sitingCoverage.addTo(MapEngine.map);
+                } else {
+                    MapEngine.map.removeLayer(MapEngine.layers.sitingCoverage);
+                }
+            });
+            document.getElementById('layerManualCoverage').addEventListener('change', e => {
+                if (e.target.checked) {
+                    const manualSites = MapEngine.getManualSites();
+                    if (manualSites.length > 0) {
+                        runSitingEvaluate();
+                    } else {
+                        showToast('暂无手动选址点', 'error');
+                        e.target.checked = false;
+                    }
+                } else {
+                    MapEngine.map.removeLayer(MapEngine.layers.manualCoverage);
+                }
+            });
+            document.getElementById('layerDispatch').addEventListener('change', e => {
+                toggleLayer('dispatchRoutes', e.target.checked);
+                toggleLayer('dispatchVehicles', e.target.checked);
+                if (!e.target.checked && MapEngine.stopDispatchAnimation) MapEngine.stopDispatchAnimation();
+            });
+            document.getElementById('layerStudentSim').addEventListener('change', e => toggleStudentSimLayer(e.target.checked));
+
+            document.getElementById('btnSitingOptimize').addEventListener('click', runSitingOptimize);
+            document.getElementById('btnManualSiting').addEventListener('click', toggleManualSitingMode);
+            document.getElementById('btnClearSiting').addEventListener('click', () => { MapEngine.clearSiting(); MapEngine.clearManualSites(); sitingResult = null; refreshAll(); showToast('选址已清除', 'success'); });
+            document.getElementById('btnDispatchOptimize').addEventListener('click', runDispatchOptimize);
+            document.getElementById('btnPlayDispatch').addEventListener('click', () => {
+                const hasRoutes = (MapEngine.layers?.dispatchRoutes?.getLayers?.() || []).length > 0;
+                if (!hasRoutes) { showToast('请先运行调度优化', 'error'); return; }
+                document.getElementById('layerDispatch').checked = true;
+                toggleLayer('dispatchRoutes', true);
+                toggleLayer('dispatchVehicles', true);
+                MapEngine.playDispatchAnimation({ duration: 8000 });
+            });
+            document.getElementById('btnClearDispatch').addEventListener('click', () => { MapEngine.clearDispatch(); dispatchResult = null; refreshAll(); showToast('调度已清除', 'success'); });
+            document.getElementById('btnStudentSimGenerate').addEventListener('click', runStudentSimGenerate);
+            document.getElementById('btnStudentSimPlay').addEventListener('click', toggleStudentSimPlay);
+            document.getElementById('btnStudentSimClear').addEventListener('click', clearStudentSim);
+            document.getElementById('btnLoadSupplyDemand').addEventListener('click', loadSupplyDemand);
+
+            document.getElementById('btnSaveScheme').addEventListener('click', () => { document.getElementById('saveSchemeModal').classList.add('active'); });
+            document.getElementById('saveModalClose').addEventListener('click', () => document.getElementById('saveSchemeModal').classList.remove('active'));
+            document.getElementById('btnCancelSave').addEventListener('click', () => document.getElementById('saveSchemeModal').classList.remove('active'));
+            document.getElementById('btnConfirmSave').addEventListener('click', saveCurrentScheme);
+            document.getElementById('btnExportScheme').addEventListener('click', exportCurrentScheme);
+            document.getElementById('btnScreenshot').addEventListener('click', takeScreenshot);
+
+            document.getElementById('modalClose').addEventListener('click', () => document.getElementById('siteDetailModal').classList.remove('active'));
+            document.getElementById('modalCloseBtn').addEventListener('click', () => document.getElementById('siteDetailModal').classList.remove('active'));
+            document.getElementById('siteDetailModal').addEventListener('click', e => { if (e.target.id === 'siteDetailModal') document.getElementById('siteDetailModal').classList.remove('active'); });
+
+            document.getElementById('btnConfirmCompare').addEventListener('click', compareSelectedSchemes);
+        }
+
+        function toggleLayer(layerName, visible) {
+            if (MapEngine.layers[layerName]) {
+                if (visible) MapEngine.layers[layerName].addTo(MapEngine.map);
+                else MapEngine.map.removeLayer(MapEngine.layers[layerName]);
+            }
+        }
+
+        function initStudentSim() {
+            if (!MapEngine?.map) return;
+            if (!MapEngine.map.getPane('studentSimPane')) {
+                MapEngine.map.createPane('studentSimPane');
+            }
+            const pane = MapEngine.map.getPane('studentSimPane');
+            pane.style.zIndex = '650';
+            pane.style.pointerEvents = 'none';
+
+            studentSimLayers = {
+                routes: L.layerGroup(),
+                markers: L.layerGroup()
+            };
+
+            const visible = document.getElementById('layerStudentSim')?.checked;
+            if (visible) {
+                studentSimLayers.routes.addTo(MapEngine.map);
+                studentSimLayers.markers.addTo(MapEngine.map);
+                document.getElementById('studentSimHud').style.display = '';
+            }
+            updateStudentSimHud();
+        }
+
+        function toggleStudentSimLayer(visible) {
+            if (!studentSimLayers) initStudentSim();
+            if (!studentSimLayers) return;
+            if (visible) {
+                studentSimLayers.routes.addTo(MapEngine.map);
+                studentSimLayers.markers.addTo(MapEngine.map);
+                document.getElementById('studentSimHud').style.display = '';
+                if (!studentSimResp) showToast('请先生成学生轨迹', 'success');
+            } else {
+                stopStudentSim();
+                MapEngine.map.removeLayer(studentSimLayers.routes);
+                MapEngine.map.removeLayer(studentSimLayers.markers);
+                document.getElementById('studentSimHud').style.display = 'none';
+            }
+        }
+
+        function clearStudentSim() {
+            stopStudentSim();
+            studentSimResp = null;
+            studentSimIndex = null;
+            if (studentSimLayers) {
+                studentSimLayers.routes.clearLayers();
+                studentSimLayers.markers.clearLayers();
+            }
+            const statusEl = document.getElementById('studentSimStatus');
+            if (statusEl) statusEl.textContent = '未生成';
+            updateStudentSimHud();
+        }
+
+        async function runStudentSimGenerate() {
+            const count = Math.max(1, parseInt(document.getElementById('studentSimCount')?.value || '30', 10));
+            const includeRoutes = !!document.getElementById('studentSimIncludeRoutes')?.checked;
+            const renderLimit = Math.max(1, parseInt(document.getElementById('studentSimRenderLimit')?.value || '40', 10));
+            showToast('正在生成人流轨迹...', 'success');
+            try {
+                const resp = await fetch(`${apiBaseUrl}/simulation/students/day`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ student_count: count, include_routes: includeRoutes })
+                });
+                const data = await resp.json();
+                if (!data || data.status === 'error') throw new Error(data?.message || '服务返回错误');
+                studentSimResp = data;
+                studentSimIndex = buildStudentSimIndex(data, renderLimit);
+                renderStudentSim(studentSimIndex);
+                document.getElementById('layerStudentSim').checked = true;
+                toggleStudentSimLayer(true);
+                document.getElementById('studentSimStatus').textContent = `已生成：${studentSimIndex.renderedCount}/${data.student_count}`;
+                showToast('人流轨迹生成完成', 'success');
+            } catch (err) {
+                console.error(err);
+                showToast('生成人流轨迹失败：' + err.message, 'error');
+            }
+        }
+
+        function parseClockToMinute(clockStr) {
+            if (!clockStr || typeof clockStr !== 'string') return null;
+            const m = clockStr.trim().match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+            if (!m) return null;
+            const hh = parseInt(m[1], 10);
+            const mm = parseInt(m[2], 10);
+            return hh * 60 + mm;
+        }
+
+        function buildStudentSimIndex(resp, renderLimit) {
+            const students = Array.isArray(resp?.students) ? resp.students : [];
+            const renderedStudents = students.slice(0, Math.max(1, renderLimit));
+
+            const markersById = new Map();
+            const studentsIndex = renderedStudents.map(s => {
+                const segments = Array.isArray(s?.segments) ? s.segments : [];
+                const processed = segments
+                    .map(seg => {
+                        const startM = parseClockToMinute(seg.start_time) ?? null;
+                        const endM = parseClockToMinute(seg.end_time) ?? null;
+                        const coords = Array.isArray(seg.route_coords) ? seg.route_coords : [];
+                        const latlngs = coords
+                            .filter(p => Array.isArray(p) && p.length >= 2)
+                            .map(([lng, lat]) => [lat, lng]);
+                        return { startM, endM, latlngs, activity_type: seg.activity_type };
+                    })
+                    .filter(seg => seg.latlngs.length >= 2 && seg.startM !== null && seg.endM !== null && seg.endM > seg.startM);
+                return {
+                    student_id: s.student_id,
+                    student_type: s.student_type,
+                    segments: processed
+                };
+            }).filter(s => s.segments.length > 0);
+
+            let minT = Infinity;
+            let maxT = -Infinity;
+            for (const s of studentsIndex) {
+                for (const seg of s.segments) {
+                    minT = Math.min(minT, seg.startM);
+                    maxT = Math.max(maxT, seg.endM);
+                }
+            }
+            if (!Number.isFinite(minT) || !Number.isFinite(maxT) || minT >= maxT) {
+                minT = 8 * 60;
+                maxT = 20 * 60;
+            }
+            studentSimSimStart = minT;
+            studentSimSimEnd = maxT;
+            studentSimSimMinute = minT;
+
+            return {
+                students: studentsIndex,
+                markersById,
+                renderedCount: studentsIndex.length
+            };
+        }
+
+        function studentTypeColor(studentType) {
+            if (studentType === 'engineering') return '#00E5FF';
+            if (studentType === 'information') return '#00FA9A';
+            if (studentType === 'literature_science') return '#A78BFA';
+            return '#FCD34D';
+        }
+
+        function renderStudentSim(index) {
+            if (!studentSimLayers) initStudentSim();
+            if (!studentSimLayers) return;
+            studentSimLayers.routes.clearLayers();
+            studentSimLayers.markers.clearLayers();
+            index.markersById.clear();
+
+            for (const s of index.students) {
+                const color = studentTypeColor(s.student_type);
+                for (const seg of s.segments) {
+                    const line = L.polyline(seg.latlngs, {
+                        pane: 'studentSimPane',
+                        color,
+                        weight: 2,
+                        opacity: 0.28,
+                        className: 'student-route'
+                    });
+                    studentSimLayers.routes.addLayer(line);
+                }
+                const first = s.segments[0]?.latlngs?.[0];
+                if (first) {
+                    const dot = L.circleMarker(first, {
+                        pane: 'studentSimPane',
+                        radius: 4,
+                        color: '#E2E8F0',
+                        weight: 1,
+                        fillColor: color,
+                        fillOpacity: 0.95,
+                        className: 'student-dot'
+                    });
+                    studentSimLayers.markers.addLayer(dot);
+                    index.markersById.set(s.student_id, dot);
+                }
+            }
+            updateStudentSimHud();
+        }
+
+        function formatMinute(minuteOfDay) {
+            const m = Math.max(0, Math.round(minuteOfDay));
+            const hh = String(Math.floor(m / 60) % 24).padStart(2, '0');
+            const mm = String(m % 60).padStart(2, '0');
+            return `${hh}:${mm}`;
+        }
+
+        function updateStudentSimHud() {
+            const hud = document.getElementById('studentSimHud');
+            if (!hud) return;
+            const visible = document.getElementById('layerStudentSim')?.checked;
+            if (!visible) return;
+            const speed = Math.max(1, parseInt(document.getElementById('studentSimSpeed')?.value || '20', 10));
+            document.getElementById('studentSimHudTime').textContent = formatMinute(studentSimSimMinute || studentSimSimStart);
+            document.getElementById('studentSimHudCount').textContent = String(studentSimIndex?.renderedCount ?? 0);
+            document.getElementById('studentSimHudSpeed').textContent = `${speed} 分/秒`;
+        }
+
+        function toggleStudentSimPlay() {
+            if (!studentSimResp || !studentSimIndex || (studentSimIndex?.renderedCount ?? 0) === 0) {
+                showToast('请先生成学生轨迹', 'error');
+                return;
+            }
+            if (!document.getElementById('layerStudentSim')?.checked) {
+                document.getElementById('layerStudentSim').checked = true;
+                toggleStudentSimLayer(true);
+            }
+            if (studentSimPlaying) stopStudentSim();
+            else playStudentSim();
+        }
+
+        function playStudentSim() {
+            if (studentSimPlaying) return;
+            studentSimPlaying = true;
+            studentSimLastTs = 0;
+            document.getElementById('btnStudentSimPlay').textContent = '⏸ 暂停';
+            document.getElementById('studentSimHud').style.display = '';
+            studentSimRaf = requestAnimationFrame(studentSimTick);
+        }
+
+        function stopStudentSim() {
+            studentSimPlaying = false;
+            if (studentSimRaf) cancelAnimationFrame(studentSimRaf);
+            studentSimRaf = null;
+            const btn = document.getElementById('btnStudentSimPlay');
+            if (btn) btn.textContent = '⏵ 播放';
+        }
+
+        function interpLatLng(latlngs, t01) {
+            if (!latlngs || latlngs.length === 0) return null;
+            if (latlngs.length === 1) return latlngs[0];
+            const tt = Math.min(1, Math.max(0, t01));
+            const f = tt * (latlngs.length - 1);
+            const i = Math.floor(f);
+            const frac = f - i;
+            const a = latlngs[i];
+            const b = latlngs[Math.min(i + 1, latlngs.length - 1)];
+            return [a[0] + (b[0] - a[0]) * frac, a[1] + (b[1] - a[1]) * frac];
+        }
+
+        function findActiveSegment(segments, minuteOfDay) {
+            for (const seg of segments) {
+                if (minuteOfDay >= seg.startM && minuteOfDay < seg.endM) return seg;
+            }
+            if (minuteOfDay < segments[0].startM) return segments[0];
+            return segments[segments.length - 1];
+        }
+
+        function studentSimTick(ts) {
+            if (!studentSimPlaying) return;
+            const speed = Math.max(1, parseInt(document.getElementById('studentSimSpeed')?.value || '20', 10)); // minutes per second
+            if (!studentSimLastTs) studentSimLastTs = ts;
+            const dt = Math.min(0.05, (ts - studentSimLastTs) / 1000);
+            studentSimLastTs = ts;
+
+            studentSimSimMinute += dt * speed;
+            if (studentSimSimMinute > studentSimSimEnd) studentSimSimMinute = studentSimSimStart;
+
+            if (studentSimIndex?.students && studentSimIndex?.markersById) {
+                for (const s of studentSimIndex.students) {
+                    const marker = studentSimIndex.markersById.get(s.student_id);
+                    if (!marker) continue;
+                    const seg = findActiveSegment(s.segments, studentSimSimMinute);
+                    const ratio = (studentSimSimMinute - seg.startM) / (seg.endM - seg.startM);
+                    const latlng = interpLatLng(seg.latlngs, ratio);
+                    if (latlng) marker.setLatLng(latlng);
+                }
+            }
+            updateStudentSimHud();
+            studentSimRaf = requestAnimationFrame(studentSimTick);
+        }
+
+        async function runSitingOptimize() {
+            showToast('正在优化选址...', 'success');
+            try {
+                const resp = await fetch(`${apiBaseUrl}/siting/optimize`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ period: currentPeriod, target_sites_count: 8, service_radius: 200, include_process: false, algorithm_type: 'GA' })
+                });
+                sitingResult = await resp.json();
+                document.getElementById('layerAutoCoverage').checked = true;
+                MapEngine.setSitingOptimizeResponse(sitingResult);
+                refreshAll();
+                showToast(`选址完成：${sitingResult.optimal_sites?.features?.length || 0} 个点`, 'success');
+            } catch (err) { showToast('选址失败：' + err.message, 'error'); }
+        }
+
+        async function runSitingEvaluate() {
+            const sites = MapEngine.getManualSites();
+            if (sites.length === 0) { showToast('请先在地图上添加手动选址点', 'error'); return; }
+            showToast('正在评估...', 'success');
+            document.getElementById('layerManualCoverage').checked = true;
+            try {
+                const resp = await fetch(`${apiBaseUrl}/siting/evaluate`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ current_sites: sites, period: currentPeriod, service_radius: 200 })
+                });
+                const result = await resp.json();
+                sitingResult = result;
+                MapEngine.setSitingEvaluateResponse(result);
+                refreshAll();
+                showToast('评估完成', 'success');
+            } catch (err) { showToast('评估失败：' + err.message, 'error'); }
+        }
+
+        async function loadSupplyDemand() {
+            showToast('正在加载供需数据...', 'success');
+            try {
+                const resp = await fetch(`${apiBaseUrl}/dispatch/status?period=${currentPeriod}`);
+                const data = await resp.json();
+                const list = document.getElementById('supplyDemandList');
+                if (!data.stations || data.stations.length === 0) {
+                    list.innerHTML = '<div style="text-align:center; color:#6a7a8a; padding:10px; font-size:12px;">暂无数据</div>';
+                    return;
+                }
+                list.innerHTML = data.stations.map(s => {
+                    const balance = s.current_bikes - s.predicted_demand;
+                    const balanceClass = balance > 0 ? 'balance-positive' : balance < 0 ? 'balance-negative' : 'balance-zero';
+                    const balanceSign = balance > 0 ? '+' : '';
+                    return `
+                        <div class="supply-demand-item">
+                            <span class="site-name" title="${s.site_name}">${s.site_name}</span>
+                            <span class="supply-value">${s.current_bikes}</span>
+                            <span class="demand-value">${s.predicted_demand}</span>
+                            <span class="balance-value ${balanceClass}">${balanceSign}${balance}</span>
+                        </div>
+                    `;
+                }).join('');
+            } catch (err) { showToast('加载失败：' + err.message, 'error'); }
+        }
+
+        async function exportCurrentScheme() {
+            const schemeData = {
+                name: '导出方案',
+                period: currentPeriod,
+                siting_result: sitingResult,
+                dispatch_result: dispatchResult,
+                manual_sites: MapEngine.getManualSites()
+            };
+            try {
+                const resp = await fetch(`${apiBaseUrl}/export/scheme`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ scheme_data: schemeData, file_format: 'csv', file_name: 'scheme_export' })
+                });
+                const blob = await resp.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'scheme_export.csv';
+                a.click();
+                URL.revokeObjectURL(url);
+                showToast('导出成功', 'success');
+            } catch (err) { showToast('导出失败：' + err.message, 'error'); }
+        }
+
+        function takeScreenshot() {
+            const mapContainer = document.getElementById('map');
+            html2canvas(mapContainer).then(canvas => {
+                const link = document.createElement('a');
+                link.download = `map_screenshot_${Date.now()}.png`;
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+                showToast('截图已保存', 'success');
+            }).catch(err => showToast('截图失败：' + err.message, 'error'));
+        }
+
+        async function runDispatchOptimize() {
+            showToast('正在优化调度...', 'success');
+            try {
+                const resp = await fetch(`${apiBaseUrl}/dispatch/optimize`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify((() => {
+                        const manualSites = MapEngine.getManualSites();
+                        const isManualScheme = !!document.getElementById('layerManualCoverage')?.checked;
+
+                        const smartSites = (sitingResult?.optimal_sites?.features || [])
+                            .map(f => ({
+                                site_id: f?.properties?.site_id,
+                                name: f?.properties?.name,
+                                latitude: f?.geometry?.coordinates?.[1],
+                                longitude: f?.geometry?.coordinates?.[0],
+                                capacity: f?.properties?.capacity || 0
+                            }))
+                            .filter(s => typeof s.latitude === 'number' && typeof s.longitude === 'number');
+
+                        const current_sites = isManualScheme
+                            ? manualSites
+                            : (smartSites.length > 0 ? smartSites : manualSites);
+
+                        return {
+                            period: currentPeriod,
+                            algorithm_type: 'GA',
+                            include_process: true,
+                            current_sites
+                        };
+                    })())
+                });
+                dispatchResult = await resp.json();
+                MapEngine.clearDispatch();
+                MapEngine.setDispatchOptimizeResponse(dispatchResult);
+                refreshAll();
+                showToast('调度优化完成', 'success');
+            } catch (err) { showToast('调度失败：' + err.message, 'error'); }
+        }
+
+        async function saveCurrentScheme() {
+            const name = document.getElementById('schemeNameInput').value.trim();
+            if (!name) { showToast('请输入方案名称', 'error'); return; }
+            const payload = {
+                name,
+                scheme_type: 'siting',
+                description: document.getElementById('schemeNoteInput').value.trim(),
+                scheme_data: {
+                    period: currentPeriod,
+                    siting_result: sitingResult,
+                    dispatch_result: dispatchResult,
+                    manual_sites: MapEngine.getManualSites()
+                }
+            };
+            try {
+                const resp = await fetch(`${apiBaseUrl}/schemes`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const result = await resp.json();
+                document.getElementById('saveSchemeModal').classList.remove('active');
+                document.getElementById('schemeNameInput').value = '';
+                document.getElementById('schemeNoteInput').value = '';
+                refreshAll();
+                showToast('方案已保存', 'success');
+            } catch (err) { showToast('保存失败：' + err.message, 'error'); }
+        }
+
+        async function loadSchemes() {
+            try {
+                const resp = await fetch(`${apiBaseUrl}/schemes`);
+                const data = await resp.json();
+                const list = document.getElementById('schemeList');
+                if (!data.items || data.items.length === 0) {
+                    list.innerHTML = '<div style="text-align:center; color:#6a7a8a; padding:20px; font-size:13px;">暂无保存的方案</div>';
+                    return;
+                }
+                list.innerHTML = data.items.map(s => `
+                    <div class="scheme-item">
+                        <div class="scheme-info" onclick="loadScheme('${s.scheme_id}')">
+                            <div class="scheme-name">${s.name}</div>
+                            <div class="scheme-meta">${s.period || ''} | ${new Date(s.created_at).toLocaleDateString()}</div>
+                        </div>
+                        <div class="scheme-actions">
+                            <button class="scheme-btn compare" onclick="toggleCompareScheme('${s.scheme_id}')" title="对比">⚖</button>
+                            <button class="scheme-btn delete" onclick="deleteScheme('${s.scheme_id}')" title="删除">✕</button>
+                        </div>
+                    </div>
+                `).join('');
+                updateComparePanel(data.items);
+            } catch (err) { console.error('Failed to load schemes:', err); }
+        }
+
+        async function loadScheme(schemeId) {
+            try {
+                const resp = await fetch(`${apiBaseUrl}/schemes/${schemeId}`);
+                const scheme = await resp.json();
+                const data = scheme.scheme_data || {};
+                if (data.siting_result) { sitingResult = data.siting_result; MapEngine.setSitingOptimizeResponse(sitingResult); }
+                if (data.dispatch_result) { dispatchResult = data.dispatch_result; MapEngine.setDispatchOptimizeResponse(dispatchResult); }
+                if (data.manual_sites) { MapEngine.clearManualSites(); data.manual_sites.forEach(s => MapEngine.addManualSite(s)); updateManualSitesList(); }
+                if (data.period) { currentPeriod = data.period; document.querySelectorAll('.period-btn').forEach(b => { b.classList.toggle('active', b.dataset.period === currentPeriod); }); }
+                refreshAll();
+                showToast('方案已加载', 'success');
+            } catch (err) { showToast('加载失败：' + err.message, 'error'); }
+        }
+
+        async function deleteScheme(schemeId) {
+            if (!confirm('确定要删除这个方案吗？')) return;
+            try {
+                await fetch(`${apiBaseUrl}/schemes/${schemeId}`, { method: 'DELETE' });
+                refreshAll();
+                showToast('方案已删除', 'success');
+            } catch (err) { showToast('删除失败：' + err.message, 'error'); }
+        }
+
+        function toggleCompareScheme(schemeId) {
+            const idx = compareSchemes.indexOf(schemeId);
+            if (idx >= 0) compareSchemes.splice(idx, 1);
+            else {
+                if (compareSchemes.length >= 2) compareSchemes.shift();
+                compareSchemes.push(schemeId);
+            }
+            document.querySelectorAll('.scheme-btn.compare').forEach(btn => {
+                const id = btn.getAttribute('onclick').match(/'([^']+)'/)[1];
+                btn.classList.toggle('selected', compareSchemes.includes(id));
+            });
+            if (compareSchemes.length === 2) document.getElementById('comparePanel').classList.add('active');
+            else document.getElementById('comparePanel').classList.remove('active');
+        }
+
+        function updateComparePanel(schemes) {
+            const btns = document.getElementById('compareBtns');
+            btns.innerHTML = schemes.slice(0, 5).map(s => `<button class="compare-scheme-btn ${compareSchemes.includes(s.scheme_id) ? 'selected' : ''}" onclick="toggleCompareScheme('${s.scheme_id}')">${s.name}</button>`).join('');
+        }
+
+        async function compareSelectedSchemes() {
+            if (compareSchemes.length !== 2) { showToast('请选择2个方案进行对比', 'error'); return; }
+            try {
+                const [s1, s2] = await Promise.all([fetch(`${apiBaseUrl}/schemes/${compareSchemes[0]}`).then(r => r.json()), fetch(`${apiBaseUrl}/schemes/${compareSchemes[1]}`).then(r => r.json())]);
+                const s1Data = s1.scheme_data || {};
+                const s2Data = s2.scheme_data || {};
+                const s1Siting = s1Data.siting_result;
+                const s2Siting = s2Data.siting_result;
+                const s1Metrics = s1Siting?.global_metrics || {};
+                const s2Metrics = s2Siting?.global_metrics || {};
+                const s1Sites = s1Siting?.optimal_sites?.features || s1Siting?.coverage_areas?.features || [];
+                const s2Sites = s2Siting?.optimal_sites?.features || s2Siting?.coverage_areas?.features || [];
+                const s1Coverage = s1Metrics.coverage_rate ? (s1Metrics.coverage_rate * 100).toFixed(1) : '--';
+                const s2Coverage = s2Metrics.coverage_rate ? (s2Metrics.coverage_rate * 100).toFixed(1) : '--';
+                const s1AvgCap = s1Sites.length > 0 ? (s1Sites.reduce((sum, f) => sum + (f.properties?.capacity || 0), 0) / s1Sites.length).toFixed(0) : '--';
+                const s2AvgCap = s2Sites.length > 0 ? (s2Sites.reduce((sum, f) => sum + (f.properties?.capacity || 0), 0) / s2Sites.length).toFixed(0) : '--';
+                const s1Served = s1Sites.reduce((sum, f) => sum + (f.properties?.served_people || 0), 0) || '--';
+                const s2Served = s2Sites.reduce((sum, f) => sum + (f.properties?.served_people || 0), 0) || '--';
+                coverageChart.setOption({
+                    tooltip: { trigger: 'axis' },
+                    legend: { data: [s1.name, s2.name], textStyle: { color: '#6a7a8a' }, top: 0 },
+                    grid: { left: '3%', right: '15%', bottom: '15%', top: '30%' },
+                    xAxis: { type: 'category', data: ['覆盖率(%)', '平均容量', '服务人数'], axisLine: { lineStyle: { color: '#2a3a4a' } }, axisLabel: { color: '#6a7a8a', fontSize: 10 }, boundaryGap: true },
+                    yAxis: [
+                        { type: 'value', name: '覆盖率(%)', max: 100, axisLine: { lineStyle: { color: '#00FA9A' } }, axisLabel: { color: '#00FA9A', fontSize: 9, formatter: '{value}%' }, splitLine: { show: false } },
+                        { type: 'value', name: '容量', axisLine: { lineStyle: { color: '#f39c12' } }, axisLabel: { color: '#f39c12', fontSize: 9 }, splitLine: { show: false } },
+                        { type: 'value', name: '人数', axisLine: { lineStyle: { color: '#00E5FF' } }, axisLabel: { color: '#00E5FF', fontSize: 9 }, splitLine: { show: false } }
+                    ],
+                    series: [
+                        { name: s1.name + '-覆盖率', data: [s1Coverage === '--' ? 0 : s1Coverage, 0, 0], type: 'bar', yAxisIndex: 0, itemStyle: { color: '#00FA9A' }, barGap: '10%', label: { show: true, position: 'top', formatter: p => p.value || '--', color: '#00FA9A', fontSize: 9 } },
+                        { name: s2.name + '-覆盖率', data: [s2Coverage === '--' ? 0 : s2Coverage, 0, 0], type: 'bar', yAxisIndex: 0, itemStyle: { color: '#7FD17F' }, barGap: '10%' },
+                        { name: s1.name + '-容量', data: [0, s1AvgCap === '--' ? 0 : s1AvgCap, 0], type: 'bar', yAxisIndex: 1, itemStyle: { color: '#f39c12' }, barGap: '10%', label: { show: true, position: 'top', formatter: p => p.value || '--', color: '#f39c12', fontSize: 9 } },
+                        { name: s2.name + '-容量', data: [0, s2AvgCap === '--' ? 0 : s2AvgCap, 0], type: 'bar', yAxisIndex: 1, itemStyle: { color: '#C77E10' }, barGap: '10%' },
+                        { name: s1.name + '-人数', data: [0, 0, s1Served === '--' ? 0 : s1Served], type: 'bar', yAxisIndex: 2, itemStyle: { color: '#00E5FF' }, barGap: '10%', label: { show: true, position: 'top', formatter: p => p.value || '--', color: '#00E5FF', fontSize: 9 } },
+                        { name: s2.name + '-人数', data: [0, 0, s2Served === '--' ? 0 : s2Served], type: 'bar', yAxisIndex: 2, itemStyle: { color: '#00B4CC' }, barGap: '10%' }
+                    ]
+                }, { notMerge: true });
+                document.getElementById('comparePanel').classList.remove('active');
+                showToast('对比完成', 'success');
+            } catch (err) { showToast('对比失败：' + err.message, 'error'); }
+        }
+
+        function showSiteDetail(type, data) {
+            const modal = document.getElementById('siteDetailModal');
+            const body = document.getElementById('modalBody');
+            if (type === 'optimal') {
+                body.innerHTML = `
+                    <div class="detail-row"><span class="detail-label">类型</span><span class="detail-value">推荐停车点</span></div>
+                    <div class="detail-row"><span class="detail-label">编号</span><span class="detail-value">${data.id || data.site_id}</span></div>
+                    <div class="detail-row"><span class="detail-label">容量</span><span class="detail-value">${data.capacity || '--'}</span></div>
+                    <div class="detail-row"><span class="detail-label">服务人数</span><span class="detail-value">${data.served_people || '--'}</span></div>
+                    <div class="detail-row"><span class="detail-label">坐标</span><span class="detail-value">${data.latitude?.toFixed(6)}, ${data.longitude?.toFixed(6)}</span></div>
+                `;
+            } else if (type === 'manual') {
+                body.innerHTML = `
+                    <div class="detail-row"><span class="detail-label">类型</span><span class="detail-value">手动选址点</span></div>
+                    <div class="detail-row"><span class="detail-label">编号</span><span class="detail-value">${data.site_id}</span></div>
+                    <div class="detail-row"><span class="detail-label">名称</span><span class="detail-value">${data.name}</span></div>
+                    <div class="detail-row"><span class="detail-label">容量</span><span class="detail-value">${data.capacity}</span></div>
+                    <div class="detail-row"><span class="detail-label">坐标</span><span class="detail-value">${data.latitude?.toFixed(6)}, ${data.longitude?.toFixed(6)}</span></div>
+                `;
+            }
+            modal.classList.add('active');
+        }
+
+        function updateMetrics() {
+            document.getElementById('metricCoverage').textContent = sitingResult?.global_metrics?.coverage_rate ? (sitingResult.global_metrics.coverage_rate * 100).toFixed(1) : '--';
+            document.getElementById('metricSites').textContent = sitingResult?.optimal_sites?.features?.length || '--';
+            if (dispatchResult?.efficiency_metrics) {
+                const em = dispatchResult.efficiency_metrics;
+                document.getElementById('metricEfficiency').textContent = em.total_distance ? em.total_distance.toFixed(0) + 'm' : '--';
+                document.getElementById('metricTransfers').textContent = em.total_transfer_bikes || '--';
+                document.getElementById('metricCost').textContent = em.estimated_cost ? '¥' + em.estimated_cost.toFixed(2) : '--';
+            } else {
+                document.getElementById('metricEfficiency').textContent = '--';
+                document.getElementById('metricTransfers').textContent = '--';
+                document.getElementById('metricCost').textContent = '--';
+            }
+        }
+
+        function refreshAll() {
+            updateMetrics();
+            loadSchemes();
+            updateManualSitesList();
+            updateCoverageRate();
+        }
+
+        async function updateCoverageRate() {
+            const sites = MapEngine.getManualSites();
+            if (sites.length === 0) return;
+            try {
+                const resp = await fetch(`${apiBaseUrl}/siting/evaluate`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ current_sites: sites, period: currentPeriod, service_radius: 200 })
+                });
+                const result = await resp.json();
+                if (result?.global_metrics?.coverage_rate) {
+                    document.getElementById('metricCoverage').textContent = (result.global_metrics.coverage_rate * 100).toFixed(1);
+                }
+            } catch (err) { console.error('Failed to update coverage:', err); }
+        }
+
+        function showToast(message, type) {
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+        }
+
+        window.MapEngine = MapEngine;
+    </script>
+</body>
+</html>
